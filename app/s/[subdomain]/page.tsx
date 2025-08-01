@@ -1,63 +1,79 @@
-import Link from 'next/link';
-import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
-import { getSubdomainData } from '@/lib/subdomains';
-import { protocol, rootDomain } from '@/lib/utils';
+import Link from "next/link";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getStoreData, getTemplate } from "@/lib/subdomains";
+import { protocol, rootDomain } from "@/lib/utils";
+import { sampleTemplates, renderTemplate } from "@/lib/templates";
 
 export async function generateMetadata({
-  params
+  params,
 }: {
   params: Promise<{ subdomain: string }>;
 }): Promise<Metadata> {
   const { subdomain } = await params;
-  const subdomainData = await getSubdomainData(subdomain);
+  const storeData = await getStoreData(subdomain);
 
-  if (!subdomainData) {
+  if (!storeData) {
     return {
-      title: rootDomain
+      title: rootDomain,
     };
   }
 
   return {
-    title: `${subdomain}.${rootDomain}`,
-    description: `Subdomain page for ${subdomain}.${rootDomain}`
+    title: `${storeData.title} - ${subdomain}.${rootDomain}`,
+    description: `Store page for ${storeData.title}`,
   };
 }
 
 export default async function SubdomainPage({
-  params
+  params,
 }: {
   params: Promise<{ subdomain: string }>;
 }) {
   const { subdomain } = await params;
-  const subdomainData = await getSubdomainData(subdomain);
+  const storeData = await getStoreData(subdomain);
 
-  if (!subdomainData) {
+  if (!storeData) {
     notFound();
   }
 
+  // Get template data
+  let template = await getTemplate(storeData.template_id);
+
+  // Fallback to sample templates if not found in database
+  if (!template) {
+    const fallbackTemplate =
+      sampleTemplates.find((t) => t.id === storeData.template_id) ||
+      sampleTemplates[0];
+    template = {
+      ...fallbackTemplate,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  // Render the template with store data
+  const renderedHtml = renderTemplate(template!, storeData.title);
+
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-blue-50 to-white p-4">
-      <div className="absolute top-4 right-4">
+    <div className="relative">
+      {/* Back to main site link */}
+      <div className="absolute top-4 right-4 z-10">
         <Link
           href={`${protocol}://${rootDomain}`}
-          className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          className="text-sm text-gray-500 hover:text-gray-700 transition-colors bg-white/80 backdrop-blur-sm px-3 py-1 rounded"
         >
           {rootDomain}
         </Link>
       </div>
 
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-9xl mb-6">{subdomainData.emoji}</div>
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
-            Welcome to {subdomain}.{rootDomain}
-          </h1>
-          <p className="mt-3 text-lg text-gray-600">
-            This is your custom subdomain page
-          </p>
-        </div>
-      </div>
+      {/* Render the template */}
+      <div
+        dangerouslySetInnerHTML={{ __html: renderedHtml }}
+        className="template-content"
+      />
+
+      {/* Inject template CSS */}
+      <style dangerouslySetInnerHTML={{ __html: template!.css_content }} />
     </div>
   );
 }

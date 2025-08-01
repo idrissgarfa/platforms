@@ -1,4 +1,4 @@
-import { redis } from '@/lib/redis';
+import { supabase, type Store, type Template } from "./supabase";
 
 export function isValidIcon(str: string) {
   if (str.length > 10) {
@@ -16,7 +16,7 @@ export function isValidIcon(str: string) {
     // If the regex fails (e.g., in environments that don't support Unicode property escapes),
     // fall back to a simpler validation
     console.warn(
-      'Emoji regex validation failed, using fallback validation',
+      "Emoji regex validation failed, using fallback validation",
       error
     );
   }
@@ -26,36 +26,84 @@ export function isValidIcon(str: string) {
   return str.length >= 1 && str.length <= 10;
 }
 
-type SubdomainData = {
-  emoji: string;
-  createdAt: number;
-};
+export async function getStoreData(subdomain: string): Promise<Store | null> {
+  const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
-export async function getSubdomainData(subdomain: string) {
-  const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
-  const data = await redis.get<SubdomainData>(
-    `subdomain:${sanitizedSubdomain}`
-  );
+  const { data, error } = await supabase
+    .from("stores")
+    .select("*")
+    .eq("subdomain", sanitizedSubdomain)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
   return data;
 }
 
-export async function getAllSubdomains() {
-  const keys = await redis.keys('subdomain:*');
+export async function getTemplate(
+  templateId: string
+): Promise<Template | null> {
+  const { data, error } = await supabase
+    .from("templates")
+    .select("*")
+    .eq("id", templateId)
+    .single();
 
-  if (!keys.length) {
+  if (error || !data) {
+    return null;
+  }
+
+  return data;
+}
+
+export async function getAllStores(): Promise<Store[]> {
+  const { data, error } = await supabase
+    .from("stores")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
     return [];
   }
 
-  const values = await redis.mget<SubdomainData[]>(...keys);
+  return data;
+}
 
-  return keys.map((key, index) => {
-    const subdomain = key.replace('subdomain:', '');
-    const data = values[index];
+export async function createStore(
+  subdomain: string,
+  title: string,
+  templateId: string
+): Promise<Store | null> {
+  const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
-    return {
-      subdomain,
-      emoji: data?.emoji || '❓',
-      createdAt: data?.createdAt || Date.now()
-    };
-  });
+  const { data, error } = await supabase
+    .from("stores")
+    .insert({
+      subdomain: sanitizedSubdomain,
+      title,
+      template_id: templateId,
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data;
+}
+
+export async function getAllTemplates(): Promise<Template[]> {
+  const { data, error } = await supabase
+    .from("templates")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data;
 }
